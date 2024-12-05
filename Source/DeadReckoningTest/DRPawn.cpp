@@ -61,6 +61,7 @@ ADRPawn::ADRPawn() : TimeStampCollector(1.0f, 1.0f)
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
 	FollowCamera->bUsePawnControlRotation = false;
 
+	// Initialize variables for dead reckoning
 	ServerUpdateTime = 1 / NetUpdateFrequency;
 	AverageServerUpdateTime = 1 / NetUpdateFrequency;
 	DeadReckon_T = 0.f;
@@ -84,7 +85,8 @@ void ADRPawn::BeginPlay()
 {
 	Super::BeginPlay();
 	FVector PlayerStartPosition = GetPlayerStartPosition();
-	
+
+	// Initialize motion parameters
 	Radius = GetDRWorldSettings()->Radius;
 	AngularSpeed = GetDRWorldSettings()->AngularSpeed;
 	
@@ -94,7 +96,8 @@ void ADRPawn::BeginPlay()
 	ReplicationTime = GetDRWorldSettings()->ReplicationTime;
 	ReplicationDistSquare = Speed * ReplicationTime;
 	ReplicationDistCircle = ReplicationTime * FMath::DegreesToRadians(AngularSpeed.Yaw) * Radius;
-	
+
+	// Setup camera properties
 	CameraBoom->TargetArmLength = CameraDistance;
 	CameraBoom->SetRelativeLocation(FVector(0, 0, CameraSpringZLocation));
 
@@ -124,6 +127,7 @@ void ADRPawn::BeginPlay()
 	
 }
 
+// Get a reference to the custom controller
 ADRController* ADRPawn::GetDRController() const
 {
 	if(Controller == nullptr)
@@ -131,12 +135,14 @@ ADRController* ADRPawn::GetDRController() const
 	return Cast<ADRController>(Controller);
 }
 
+// Retrieve world settings
 ADRWorldSettings* ADRPawn::GetDRWorldSettings() const
 {
 	ADRWorldSettings* WorldSettings = Cast<ADRWorldSettings>(GetWorldSettings());
 	return WorldSettings;
 }
 
+// Find the starting position for the player
 FVector ADRPawn::GetPlayerStartPosition() const
 {
 	TArray<AActor*> PlayerStarts;
@@ -156,6 +162,7 @@ FVector ADRPawn::GetPlayerStartPosition() const
 	return FVector::ZeroVector;
 }
 
+// Tick function to handle movement logic
 void ADRPawn::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
@@ -171,15 +178,16 @@ void ADRPawn::Tick(float DeltaTime)
 	{
 		DeadReckon_T += DeltaTime;
 		DeadReckon_T_Hat = DeadReckon_T / AverageServerUpdateTime;
-		if(DeadReckon_T_Hat > 1.2f)
+		if(DeadReckon_T_Hat > MaxDeadReckon_T_Hat)
 		{
-			DeadReckon_T_Hat = 1.2f;
+			DeadReckon_T_Hat = MaxDeadReckon_T_Hat;
 		}
 		DeadReckoningMove(DeltaTime);
 	}
 
 }
 
+// Logic for moving in a circular path on the server
 void ADRPawn::MoveСircleServer(float In_DeltaTime)
 {
 	const FRotator Rot = AngularSpeed * In_DeltaTime;
@@ -211,6 +219,7 @@ void ADRPawn::MoveСircleServer(float In_DeltaTime)
 	CustomDrawDebugLine(PreviousLocation, NewLocation, FColor::Green, 5.0f, 10.0f);
 }
 
+// Logic for square path movement
 void ADRPawn::MoveSquareServer(float In_DeltaTime)
 {
 	const FVector PreviousLocation = GetActorLocation();
@@ -238,7 +247,7 @@ void ADRPawn::MoveSquareServer(float In_DeltaTime)
 	CustomDrawDebugLine(PreviousLocation, GetActorLocation(), FColor::Green, 5.0f, 10.0f);
 }
 
-
+// Logic for dead reckoning movement on the client
 void ADRPawn::DeadReckoningMove(float In_DeltaTime)
 {
 	Client_KinematicState.Acceleration = Server_KinematicState.Acceleration;
@@ -262,8 +271,10 @@ void ADRPawn::DeadReckoningMove(float In_DeltaTime)
 	
 }
 
+// Callback when the server kinematic state is replicated
 void ADRPawn::OnRep_KinematicState()
 {
+	// Reset dead reckoning timer and update server timing
 	DeadReckon_T = 0;
 	TimeStampCollector.Add(FDateTime::UtcNow());
 	if(TimeStampCollector.IsValid())
