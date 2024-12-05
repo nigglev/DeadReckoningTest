@@ -44,7 +44,7 @@ class DEADRECKONINGTEST_API ADRPawn : public APawn
 	GENERATED_BODY()
 
 public:
-
+	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UCapsuleComponent> RootCapsuleComponent;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
@@ -72,6 +72,9 @@ protected:
 
 	float SideLength = 0.0f;
 	float Speed = 0.0f;
+	FVector CurrentVelocity;
+	float PassedDistance = 0.0f;
+	FRotator TurnRight = FRotator(0,90.0f,0);
 	FVector StartPositionSquareMovement;
 	int32 CurrentSide = 0;
 	FVector TargetLocation;
@@ -80,7 +83,7 @@ protected:
 	float ReplicationTime;
 	float ReplicationDistCircle = 50.0f;
 	float ReplicationDistSquare = 50.0f;
-
+		
 	UPROPERTY(ReplicatedUsing = OnRep_KinematicState)
 	FKinematicState Server_KinematicState;
 	UPROPERTY()
@@ -92,10 +95,9 @@ protected:
 	FVector GetPlayerStartPosition() const;
 	void MoveСircleServer(float In_DeltaTime);
 	void MoveSquareServer(float In_DeltaTime);
-	void UpdateTargetLocation();
 	void DeadReckoningMove(float In_DeltaTime);
 	void CustomDrawDebugLine(const FVector& From, const FVector& To, FColor Color, float Thickness, float InLifeTime) const;
-	void DrawShape(const FVector& OldPos, const FVector& NewPos, FColor Color, float Thickness);
+	void DrawShape(const FVector& OldPos, const FVector& NewPos, FColor Color, float Thickness) const;
 	
 	UFUNCTION()
 	void OnRep_KinematicState();

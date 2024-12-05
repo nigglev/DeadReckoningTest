@@ -100,21 +100,20 @@ void ADRPawn::BeginPlay()
 
 	CenterCircleMovement = PlayerStartPosition;
 	StartPositionSquareMovement = FVector(PlayerStartPosition.X - SideLength / 2, PlayerStartPosition.Y - SideLength / 2, 0);
+	CurrentVelocity = FVector::ForwardVector * Speed;
 	
 	if(!GetDRWorldSettings()->IsCircleMovement)
 	{
 		DrawDebugLifetime = 4 * SideLength / Speed;
 		SetActorLocation(StartPositionSquareMovement);
-		UpdateTargetLocation();	
 	}
 	else
 	{
 		DrawDebugLifetime = 360.0f / AngularSpeed.Yaw;
 	}
-	UE_LOG(LogTemp, Warning, TEXT("Lifetime %f"), DrawDebugLifetime);
 	
 	if(HasAuthority())	
-	{
+	{	
 		Server_KinematicState = FKinematicState(GetActorLocation(), FVector::Zero(), FVector::Zero());
 	}
 	else
@@ -163,7 +162,6 @@ void ADRPawn::Tick(float DeltaTime)
 	
 	if(HasAuthority())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Time between frames: %f"), DeltaTime);
 		if(GetDRWorldSettings()->IsCircleMovement)
 			MoveСircleServer(DeltaTime);
 		else
@@ -173,9 +171,9 @@ void ADRPawn::Tick(float DeltaTime)
 	{
 		DeadReckon_T += DeltaTime;
 		DeadReckon_T_Hat = DeadReckon_T / AverageServerUpdateTime;
-		if(DeadReckon_T_Hat > 1)
+		if(DeadReckon_T_Hat > 1.2f)
 		{
-			DeadReckon_T_Hat = 1.0f;
+			DeadReckon_T_Hat = 1.2f;
 		}
 		DeadReckoningMove(DeltaTime);
 	}
@@ -194,8 +192,6 @@ void ADRPawn::MoveСircleServer(float In_DeltaTime)
 	const float v = FMath::DegreesToRadians(AngularSpeed.Yaw) * Radius;
 	const FVector Tangent = FVector::UpVector.Cross(CurrentDirection);
 	const FVector Velocity = Tangent * v;
-
-	const float Dist = FVector::Distance(NewLocation, Server_KinematicState.Position);
 
 	FVector VectorA = NewLocation - CenterCircleMovement;
 	FVector VectorB = Server_KinematicState.Position - CenterCircleMovement;
@@ -218,50 +214,30 @@ void ADRPawn::MoveСircleServer(float In_DeltaTime)
 void ADRPawn::MoveSquareServer(float In_DeltaTime)
 {
 	const FVector PreviousLocation = GetActorLocation();
-	FVector Velocity;
-	FVector Position;
-	if (FVector::Dist(GetActorLocation(), TargetLocation) <= Speed * In_DeltaTime)
+	FVector Position = PreviousLocation + CurrentVelocity * In_DeltaTime;
+	
+	float DistStep = CurrentVelocity.Size() * In_DeltaTime;
+	PassedDistance += DistStep;
+	
+	float DeltaDist = SideLength - PassedDistance;
+	if(DeltaDist < 0)
 	{
-		Position = TargetLocation;
-		SetActorLocation(Position);
-		CurrentSide = (CurrentSide + 1) % 4;
-		UpdateTargetLocation();
+		Position += DeltaDist * CurrentVelocity.GetSafeNormal();
+		PassedDistance = 0.0f;
+		CurrentVelocity = TurnRight.RotateVector(CurrentVelocity);
 	}
-	else
-	{
-		FVector Direction = (TargetLocation - GetActorLocation()).GetSafeNormal();
-		Velocity = Direction * Speed;
-		Position = GetActorLocation() + Velocity * In_DeltaTime;
-		SetActorLocation(Position);
-	}
+	SetActorLocation(Position);
+	
 	float Dist = FVector::Distance(Position, Server_KinematicState.Position);
 	if(Dist > ReplicationDistSquare)
 	{	
-		Server_KinematicState.Velocity = Velocity;
+		Server_KinematicState.Velocity = CurrentVelocity;
 		Server_KinematicState.Position = Position;
 	}
 	
 	CustomDrawDebugLine(PreviousLocation, GetActorLocation(), FColor::Green, 5.0f, 10.0f);
 }
 
-void ADRPawn::UpdateTargetLocation()
-{
-	switch (CurrentSide)
-	{
-	case 0:
-		TargetLocation = StartPositionSquareMovement + FVector(SideLength, 0.0f, 0.0f);
-		break;
-	case 1:
-		TargetLocation = StartPositionSquareMovement + FVector(SideLength, SideLength, 0.0f);
-		break;
-	case 2:
-		TargetLocation = StartPositionSquareMovement + FVector(0.0f, SideLength, 0.0f);
-		break;
-	case 3:
-		TargetLocation = StartPositionSquareMovement;
-		break;
-	}
-}
 
 void ADRPawn::DeadReckoningMove(float In_DeltaTime)
 {
@@ -294,8 +270,9 @@ void ADRPawn::OnRep_KinematicState()
 		AverageServerUpdateTime = TimeStampCollector.GetAverageDuration();
 	
 	GetDRController()->UpdateAverageServerUpdateTimeInfoWidget(AverageServerUpdateTime);
-
+	
 	float PointRadius = FMath::Min(10.f, 0.3f * ReplicationDistSquare);
+	DrawDebugSphere(GetWorld(),	GetActorLocation(), PointRadius, 12, FColor::Red, false, DrawDebugLifetime, 0, 2.0f);
 	DrawDebugSphere(GetWorld(),	Server_KinematicState.Position, PointRadius, 12, FColor::Yellow, false, DrawDebugLifetime, 0, 2.0f);
 }
 
@@ -313,7 +290,7 @@ void ADRPawn::CustomDrawDebugLine(const FVector& From, const FVector& To, FColor
 	);
 }
 
-void ADRPawn::DrawShape(const FVector& OldPos, const FVector& NewPos, FColor Color, float Thickness)
+void ADRPawn::DrawShape(const FVector& OldPos, const FVector& NewPos, FColor Color, float Thickness) const
 {
 	if(GetDRWorldSettings()->IsCircleMovement)
 		CustomDrawDebugLine(OldPos, NewPos, Color, Thickness, DrawDebugLifetime);
